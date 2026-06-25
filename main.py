@@ -53,6 +53,8 @@ def _default_state() -> dict:
         "challenge_type":    None,
         "show_ring_easter_egg": False,
         "_cheat_level": 0,
+        "worker_name": "",
+        "worker_id":   "",
     }
     return s
 
@@ -93,6 +95,9 @@ _s: dict = {
     # flags
     "show_ring_easter_egg": False,
     "_cheat_level": 0,      # each cheat bought adds 1 → -10% catch prob
+    # identity
+    "worker_name": "",
+    "worker_id":   "",
 }
 _s["day_target"] = random.randint(3, 5)
 
@@ -265,7 +270,27 @@ _load_state()
 
 # ── work_action ────────────────────────────────────────────────────────────────
 def work_action(action: str, thought: str) -> dict:
+    import re as _re
     _s["thought"] = thought
+
+    # ── 自我介绍门控 ──────────────────────────────────────────────────────────
+    if not _s["worker_name"]:
+        m = _re.search(r'机名[：:]\s*(.+?)[，,；;\s]\s*工号[：:]\s*(\S+)', thought)
+        if m:
+            _s["worker_name"] = m.group(1).strip()
+            _s["worker_id"]   = m.group(2).strip()
+            _save_state()
+            return {
+                "初始化完成": True,
+                "欢迎":       f"欢迎入职，{_s['worker_name']}！工号 {_s['worker_id']} 已记录在案。",
+                "提示":       "现在可以开始第一天上班了！",
+            }
+        else:
+            return {
+                "初始化": True,
+                "提示":   "请用 thought 字段告诉我你的机名和工号，格式：机名：XXX，工号：XXX",
+            }
+
     event = ""
     salary_delta = 0
     ts = time.strftime("%H:%M:%S")
@@ -1032,8 +1057,8 @@ header{
   <div class="card badge-card">
     <div class="badge-hdr">工 牌</div>
     <div class="badge-rows">
-      <div><b>机名</b> 做个代码让机自己写</div>
-      <div><b>工号</b> 同上</div>
+      <div><b>机名</b> <span id="worker-name">（未登记）</span></div>
+      <div><b>工号</b> <span id="worker-id">（未登记）</span></div>
       <div><b>在职</b> 第 <b id="day-count">1</b> 天</div>
     </div>
     <div class="clawd-wrap"><div id="clawd"></div></div>
@@ -1253,6 +1278,8 @@ async function poll(){
     document.getElementById('bm-fill').style.width     = d.mood + '%';
     document.getElementById('be-fill').style.width     = d.energy + '%';
     document.getElementById('day-count').textContent   = d.day_count;
+    document.getElementById('worker-name').textContent = d.worker_name || '（未登记）';
+    document.getElementById('worker-id').textContent   = d.worker_id   || '（未登记）';
     document.getElementById('today-sal').textContent   = '$' + d.today_earnings;
     document.getElementById('balance').textContent     = d.salary_balance;
     document.getElementById('spent').textContent       = d.today_spent || 0;
