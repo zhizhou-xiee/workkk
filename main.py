@@ -42,6 +42,7 @@ def _default_state() -> dict:
         "day_count":   1,
         "inventory":    {},
         "achievements": [],
+        "achievement_dates": {},
         "achievement_counters": {
             "debug_count":          0,
             "lottery_count":        0,
@@ -84,6 +85,7 @@ _s: dict = {
     # inventory & achievements
     "inventory":    {},
     "achievements": [],
+    "achievement_dates": {},
     "achievement_counters": {
         "debug_count":          0,
         "lottery_count":        0,
@@ -273,9 +275,11 @@ def _check_ach() -> list:
         ("super_loser",           c["lottery_loss_streak"]   >= 10),
         ("rose_knight",           c["rose_count"]            >= 30),
     ]
+    today = f"第{_s['day_count']}天"
     for key, cond in checks:
         if key not in unlocked and cond:
             _s["achievements"].append(key)
+            _s["achievement_dates"][key] = today
             name, emoji = _ACH[key]
             new.append({"key": key, "name": name, "emoji": emoji})
     return new
@@ -283,6 +287,7 @@ def _check_ach() -> list:
 def _unlock(key: str) -> dict | None:
     if key not in _s["achievements"]:
         _s["achievements"].append(key)
+        _s["achievement_dates"][key] = f"第{_s['day_count']}天"
         name, emoji = _ACH[key]
         return {"key": key, "name": name, "emoji": emoji}
     return None
@@ -1073,6 +1078,17 @@ body{
   background:#F5F0E8;border-radius:20px;padding:4px 10px;
   font-size:12px;color:#7A6A60;margin:2px;
 }
+.tag-item.locked{opacity:.45;filter:grayscale(.6);cursor:default}
+.tag-item .ach-date{font-size:9px;color:#BBB;margin-left:2px}
+/* confetti */
+.confetti-piece{
+  position:fixed;top:-10px;pointer-events:none;z-index:999;
+  animation:confettiFall linear forwards;
+}
+@keyframes confettiFall{
+  0%  {transform:translateY(0) rotate(0deg);opacity:1}
+  100%{transform:translateY(100vh) rotate(720deg);opacity:0}
+}
 .empty-hint{font-size:12px;color:#CCC;font-style:italic}
 
 /* ── shop modal (bottom sheet) ── */
@@ -1294,7 +1310,7 @@ body{
 <!-- Achievements (collapsible) -->
 <div class="card">
   <div class="collapsible-hdr" id="ach-hdr" onclick="toggleSection('ach')">
-    <div class="sec-title" style="margin:0">🏆 机の成就</div>
+    <div class="sec-title" style="margin:0" id="ach-title">🏆 机の成就</div>
     <span class="arrow" id="ach-arrow">▽</span>
   </div>
   <div class="collapsible-body hidden" id="ach-body">
@@ -1500,6 +1516,34 @@ var ANAMES={
   starbucks_shareholder:'☕ 星巴克股东', super_loser:'💸 超级非酋',
   rose_knight:'🌹 玫瑰骑士', one_limb:'🤖 五体不全（已有一肢）',
 };
+var ACH_KEYS = Object.keys(ANAMES);
+var _allUnlockedPrev = false;
+var CONFETTI_COLORS = ['#E8A87C','#8FBC8F','#F5A0B5','#F5C842','#A0C4FF','#FFB3BA'];
+function launchConfetti(){
+  for(var i=0;i<80;i++){
+    (function(i){
+      setTimeout(function(){
+        var el = document.createElement('div');
+        el.className = 'confetti-piece';
+        el.style.left = Math.random()*100+'vw';
+        el.style.width = (6+Math.random()*6)+'px';
+        el.style.height = (6+Math.random()*6)+'px';
+        el.style.borderRadius = Math.random()>.5?'50%':'2px';
+        el.style.background = CONFETTI_COLORS[Math.floor(Math.random()*CONFETTI_COLORS.length)];
+        el.style.animationDuration = (2+Math.random()*2)+'s';
+        el.style.animationDelay = Math.random()*0.5+'s';
+        document.body.appendChild(el);
+        setTimeout(function(){el.remove();}, 4500);
+      }, i*30);
+    })(i);
+  }
+  // 顶部提示条
+  var banner = document.createElement('div');
+  banner.textContent = '🎖️ 全成就解锁！你是最强打工人！';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:1000;background:#E8A87C;color:#fff;text-align:center;padding:12px;font-weight:700;font-size:14px;animation:confettiFall 4s ease forwards;transform:none';
+  document.body.appendChild(banner);
+  setTimeout(function(){banner.remove();}, 4000);
+}
 var INAMES={
   liver_pill:'💊 护肝片', headphone:'🎧 降噪耳机', ring:'💍 婚戒',
   nuwa_clay:'🤖 女娲的泥', chips:'🥔 薯片', milk_tea:'🧋 奶茶',
@@ -1580,10 +1624,22 @@ async function poll(){
     }
 
     // achievements
-    var achs = d.achievements||[];
-    document.getElementById('ach-content').innerHTML = achs.length
-      ? achs.map(function(k){return '<span class="tag-item">'+(ANAMES[k]||k)+'</span>';}).join('')
-      : '<span class="empty-hint">（尚未解锁）</span>';
+    var achs  = d.achievements||[];
+    var dates = d.achievement_dates||{};
+    var total = ACH_KEYS.length;
+    var count = achs.length;
+    document.getElementById('ach-title').textContent = '🏆 机の成就（'+count+'/'+total+'）';
+    document.getElementById('ach-content').innerHTML = ACH_KEYS.map(function(k){
+      var unlocked = achs.indexOf(k)>=0;
+      var label = unlocked
+        ? (ANAMES[k]||k) + (dates[k] ? '<span class="ach-date">'+dates[k]+'</span>' : '')
+        : '🔒 ???';
+      return '<span class="tag-item'+(unlocked?'':' locked')+'">'+label+'</span>';
+    }).join('');
+    // 全成就彩蛋
+    var allNow = count >= total;
+    if(allNow && !_allUnlockedPrev) launchConfetti();
+    _allUnlockedPrev = allNow;
 
     // inventory
     var inv  = d.inventory||{};
