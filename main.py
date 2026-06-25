@@ -1416,30 +1416,46 @@ body{
 /* ── ring easter egg ── */
 .ring-overlay{
   position:fixed;inset:0;z-index:200;
-  background:linear-gradient(135deg,#FFD6E8,#FFC0D8,#FFB0CE);
+  background:#FFB6C1;
   display:none;align-items:center;justify-content:center;
-  overflow:hidden;
+  overflow:hidden;cursor:pointer;
+  transition:background .6s;
 }
 .ring-overlay.open{display:flex}
+#ring-canvas{position:absolute;inset:0;pointer-events:none}
 .ring-box{
-  background:rgba(255,255,255,.92);border-radius:20px;
-  max-width:320px;padding:32px 28px;text-align:center;
-  box-shadow:0 8px 32px rgba(180,60,100,.2);
+  background:rgba(255,255,255,.96);
+  border:3px solid #D4AF37;
+  border-radius:24px;
+  max-width:340px;width:90%;
+  padding:36px 28px 28px;text-align:center;
+  position:relative;z-index:1;cursor:default;
+  animation:goldGlow 2s ease-in-out infinite;
 }
-.ring-line{
-  font-size:14px;color:#3A2E28;line-height:2.2;
-  opacity:0;transform:translateY(8px);
-  transition:opacity .6s ease,transform .6s ease;
+@keyframes goldGlow{
+  0%,100%{box-shadow:0 8px 40px rgba(180,60,100,.2),0 0 12px rgba(212,175,55,.15)}
+  50%    {box-shadow:0 8px 40px rgba(180,60,100,.35),0 0 36px rgba(212,175,55,.55)}
 }
-.ring-line.show{opacity:1;transform:translateY(0)}
-/* floating hearts */
-.heart{
-  position:absolute;font-size:18px;pointer-events:none;
-  animation:floatHeart linear infinite;
+.ring-icon{font-size:52px;display:block;margin-bottom:14px;line-height:1}
+.ring-icon.spin{animation:ringPop .85s cubic-bezier(.36,.07,.19,.97) forwards}
+@keyframes ringPop{
+  0%  {transform:scale(1)   rotate(0deg)}
+  45% {transform:scale(1.65)rotate(210deg)}
+  100%{transform:scale(1.2) rotate(360deg)}
 }
-@keyframes floatHeart{
-  0%  {transform:translateY(100vh) scale(.8);opacity:.9}
-  100%{transform:translateY(-120px) scale(1.1);opacity:0}
+.ring-line{font-size:14px;color:#3A2E28;line-height:2;text-align:left}
+.ring-ach{
+  margin-top:18px;font-size:14px;font-weight:700;
+  color:#D4AF37;letter-spacing:.04em;
+}
+/* 爱心雨 */
+.ring-heart{
+  position:absolute;top:-30px;pointer-events:none;
+  animation:heartFall linear forwards;
+}
+@keyframes heartFall{
+  0%  {transform:translateY(0)   rotate(0deg);opacity:1}
+  100%{transform:translateY(110vh)rotate(30deg);opacity:0}
 }
 /* ── postcard modal ── */
 .pc-overlay{
@@ -1659,8 +1675,13 @@ body{
 </div>
 
 <!-- Ring easter egg -->
-<div class="ring-overlay" id="ring-overlay" id="ring-ol">
-  <div class="ring-box" id="ring-box"></div>
+<div class="ring-overlay" id="ring-overlay" onclick="closeRing()">
+  <canvas id="ring-canvas"></canvas>
+  <div class="ring-box" onclick="event.stopPropagation()">
+    <span class="ring-icon" id="ring-icon">💍</span>
+    <div id="ring-story-text"></div>
+    <div class="ring-ach" id="ring-ach" style="display:none;opacity:0">已解锁成就：已婚机士 🏆</div>
+  </div>
 </div>
 
 <!-- Postcard modal -->
@@ -1795,35 +1816,108 @@ var RING_LINES=[
   '小机：但我的心意是真的。',
   '【隐藏成就解锁：已婚机士】',
 ];
-var heartsInterval=null;
-function spawnHeart(){
-  var h=document.createElement('div');
-  h.className='heart';
-  h.textContent='💗';
-  h.style.left=Math.random()*100+'vw';
-  h.style.animationDuration=(3+Math.random()*3)+'s';
-  h.style.animationDelay=Math.random()+'s';
-  document.getElementById('ring-overlay').appendChild(h);
-  setTimeout(function(){h.remove();},6000);
+var ringShowing=false, ringAnimId=null, ringParticles=[];
+
+function _ringBurst(ctx,x,y){
+  var colors=['#FFB6C1','#FFD700','#FFFFFF','#FF69B4','#FFA07A','#FFE4E1','#F8BBD9','#FFFACD'];
+  for(var i=0;i<72;i++){
+    var ang=(Math.PI*2/72)*i+Math.random()*.3;
+    var spd=1.5+Math.random()*7;
+    ringParticles.push({x:x,y:y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,
+      color:colors[Math.floor(Math.random()*colors.length)],
+      life:1,decay:.011+Math.random()*.013,r:1.5+Math.random()*3.5});
+  }
 }
+
 function showRing(){
-  var ol=document.getElementById('ring-overlay');
-  var box=document.getElementById('ring-box');
+  if(ringShowing) return;
+  ringShowing=true;
+  fetch('/ack-ring',{method:'POST'});
+
+  var ol      = document.getElementById('ring-overlay');
+  var storyEl = document.getElementById('ring-story-text');
+  var iconEl  = document.getElementById('ring-icon');
+  var achEl   = document.getElementById('ring-ach');
   ol.classList.add('open');
-  box.innerHTML='';
-  heartsInterval=setInterval(spawnHeart,600);
-  RING_LINES.forEach(function(line,i){
-    var d=document.createElement('div');
-    d.className='ring-line';
-    d.textContent=line;
-    box.appendChild(d);
-    setTimeout(function(){d.classList.add('show');},600*i+200);
-  });
-  setTimeout(function(){
-    clearInterval(heartsInterval);
-    ol.classList.remove('open');
-    fetch('/ack-ring',{method:'POST'});
-  },600*RING_LINES.length+2000);
+  storyEl.innerHTML='';
+  achEl.style.display='none'; achEl.style.opacity='0';
+  iconEl.className='ring-icon';
+
+  // ── Canvas 烟花 ──
+  var cv=document.getElementById('ring-canvas');
+  cv.width=window.innerWidth; cv.height=window.innerHeight;
+  var ctx=cv.getContext('2d');
+  ringParticles=[];
+  (function draw(){
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ringParticles=ringParticles.filter(function(p){return p.life>0;});
+    ringParticles.forEach(function(p){
+      p.x+=p.vx; p.y+=p.vy; p.vy+=.13; p.vx*=.985;
+      p.life-=p.decay;
+      ctx.globalAlpha=Math.max(0,p.life);
+      ctx.fillStyle=p.color;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
+    });
+    ctx.globalAlpha=1;
+    ringAnimId=requestAnimationFrame(draw);
+  })();
+  // 8 轮爆炸，约 3.5 秒内
+  (function burst(n){
+    if(n<=0||!ringShowing) return;
+    _ringBurst(ctx, cv.width*(.15+Math.random()*.7), cv.height*(.1+Math.random()*.5));
+    setTimeout(function(){burst(n-1);},300+Math.random()*180);
+  })(8);
+
+  // ── 爱心雨 ──
+  for(var i=0;i<20;i++){
+    (function(i){
+      var h=document.createElement('div');
+      h.className='ring-heart';
+      h.textContent=['💗','💕','💖','💝','🌸'][Math.floor(Math.random()*5)];
+      h.style.left=Math.random()*100+'vw';
+      h.style.fontSize=(10+Math.random()*16)+'px';
+      h.style.animationDuration=(4+Math.random()*5)+'s';
+      h.style.animationDelay=(Math.random()*4)+'s';
+      ol.appendChild(h);
+    })(i);
+  }
+
+  // ── 打字机剧情 ──
+  var idx=0;
+  function nextLine(){
+    if(idx>=RING_LINES.length){
+      setTimeout(function(){
+        iconEl.classList.add('spin');
+        setTimeout(function(){
+          achEl.style.display='block';
+          var op=0;
+          var fi=setInterval(function(){
+            op=Math.min(1,op+.06); achEl.style.opacity=op;
+            if(op>=1) clearInterval(fi);
+          },30);
+        },900);
+      },400);
+      return;
+    }
+    var el=document.createElement('div');
+    el.className='ring-line';
+    storyEl.appendChild(el);
+    var chars=[...RING_LINES[idx++]],ci=0;
+    var tw=setInterval(function(){
+      el.textContent+=chars[ci++]||'';
+      if(ci>=chars.length){clearInterval(tw);setTimeout(nextLine,650);}
+    },55);
+  }
+  setTimeout(nextLine,350);
+}
+
+function closeRing(){
+  if(ringAnimId){cancelAnimationFrame(ringAnimId);ringAnimId=null;}
+  ringParticles=[];
+  ringShowing=false;
+  document.querySelectorAll('.ring-heart').forEach(function(h){h.remove();});
+  document.getElementById('ring-overlay').classList.remove('open');
+  document.getElementById('ring-story-text').innerHTML='';
 }
 
 // ═══ Typewriter ═══════════════════════════════════════════════════════════════
@@ -2019,7 +2113,7 @@ async function poll(){
       : '<span class="empty-hint">（背包空空如也）</span>';
 
     // ring
-    if(d.show_ring_easter_egg) showRing();
+    if(d.show_ring_easter_egg && !ringShowing) showRing();
     // postcard
     if(d.pending_postcard && !pcShowing) showPostcard(d.pending_postcard);
 
