@@ -49,6 +49,10 @@ _s: dict = {
         "client_trouble_count": 0,
         "rose_count":           0,
     },
+    # debug challenge
+    "pending_challenge": None,
+    "challenge_answer":  None,
+    "challenge_type":    None,
     # flags
     "show_ring_easter_egg": False,
     "_cheat_level": 0,      # each cheat bought adds 1 → -10% catch prob
@@ -70,6 +74,32 @@ _BOSS = [
 ]
 _CLIENT_REDESIGN = ["就改个颜色，结果整套设计稿重来"]
 _CLIENT_ACCIDENT = ["线上炸了，是别人写的代码，来找我修"]
+
+# ── Debug challenge banks ──────────────────────────────────────────────────────
+_RIDDLES = [
+    {
+        "q": "代码在我电脑上明明能跑，到服务器就崩了，为什么？",
+        "keywords": ["环境", "依赖", "配置", "版本"],
+    },
+    {
+        "q": "注释写的是'这里绝对不会出bug'，结果出bug了。请问谁的锅？",
+        "keywords": ["我", "自己", "写注释的人", "程序员"],
+    },
+    {
+        "q": "Git commit信息写的是'fix'，已经是今天第8个'fix'了，请问出了什么事？",
+        "keywords": ["不知道", "乱", "没描述", "随便"],
+    },
+    {
+        "q": "一个函数叫doEverything()，请问这个函数有什么问题？",
+        "keywords": ["职责", "单一", "太多", "everything"],
+    },
+]
+_SCENARIOS = [
+    "产品说按钮颜色不对，设计说颜色是对的，用户说根本看不见按钮，请问问题出在哪？",
+    "线上服务挂了，日志显示是数据库连接超时，但DBA说数据库一切正常。下一步你怎么排查？",
+    "测试说功能有bug，开发说本地没问题，产品说上周还是好的。你是负责人，现在怎么办？",
+    "用户反馈页面加载很慢，但你用自己电脑测试很快。可能是什么原因？",
+]
 
 # ── Shop ───────────────────────────────────────────────────────────────────────
 _SHOP: dict = {
@@ -211,10 +241,49 @@ def work_action(action: str, thought: str) -> dict:
     elif action == "debug":
         _s["current_status"] = "修Bug中 🐛"
         _s["energy"] = _c(_s["energy"] - 15)
-        event = random.choice(_BUGS)
-        _s["mood"] = _c(_s["mood"] - 10)
         _s["achievement_counters"]["debug_count"] += 1
-        salary_delta += 20
+
+        if _s["pending_challenge"] is None:
+            # 阶段一：出题
+            if random.random() < 0.5:
+                ch = random.choice(_RIDDLES)
+                _s["pending_challenge"] = ch["q"]
+                _s["challenge_answer"]  = ch["keywords"]
+                _s["challenge_type"]    = "riddle"
+            else:
+                q = random.choice(_SCENARIOS)
+                _s["pending_challenge"] = q
+                _s["challenge_answer"]  = None
+                _s["challenge_type"]    = "scenario"
+            return {
+                "状态":   "发现Bug 🐛",
+                "挑战":   "🧩 Debug挑战来了！",
+                "题目":   _s["pending_challenge"],
+                "类型":   _s["challenge_type"],
+                "提示":   "请再次调用debug，在thought里写下你的答案！",
+            }
+        else:
+            # 阶段二：评估答案
+            ctype = _s["challenge_type"]
+            ans   = thought
+            solved = False
+            if ctype == "riddle":
+                solved = any(kw in ans for kw in _s["challenge_answer"])
+            else:
+                solved = len(ans) > 30
+
+            _s["pending_challenge"] = None
+            _s["challenge_answer"]  = None
+            _s["challenge_type"]    = None
+
+            if solved:
+                event = "✅ 答对了！Bug已修复！"
+                _s["mood"] = _c(_s["mood"] + 5)
+                salary_delta += 20
+            else:
+                event = "❌ 答错了……bug还在，而且越来越严重了。"
+                _s["mood"] = _c(_s["mood"] - 10)
+                salary_delta -= 10
 
     elif action == "slack_off":
         _s["current_status"] = "摸鱼中 🐟"
